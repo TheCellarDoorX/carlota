@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Minus, Trophy } from 'lucide-react';
+import { Plus, Minus, Trophy, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 
 interface HistoryEntry {
   id: number;
@@ -49,25 +50,11 @@ export default function DatePointsTracker() {
   const [activityPlayerFilter, setActivityPlayerFilter] = useState('all');
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const [showSettings, setShowSettings] = useState(false);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
+
+  const { userProfile: currentUser, signOut } = useAuth();
 
   const myName = 'Filipe';
   const theirName = 'Carlota';
-
-  // Load current user from localStorage (device-specific)
-  useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(savedUser);
-    }
-  }, []);
-
-  // Save current user to localStorage when it changes
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('currentUser', currentUser);
-    }
-  }, [currentUser]);
 
   const loadData = useCallback(async () => {
     try {
@@ -114,32 +101,38 @@ export default function DatePointsTracker() {
         setHistory(formattedHistory);
       }
 
-      // Load disputes with their entries
+      // Load disputes
       const { data: disputesData, error: disputesError } = await supabase
         .from('disputes')
-        .select('*, history(*)')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (disputesError) {
         console.error('Error loading disputes:', disputesError);
       }
 
-      if (disputesData) {
-        const formattedDisputes: Dispute[] = disputesData.map(d => ({
-          id: d.id,
-          entry: {
-            id: d.history.id,
-            person: d.history.person,
-            amount: d.history.amount,
-            reason: d.history.reason,
-            timestamp: new Date(d.history.created_at).toLocaleString('pt-PT'),
-            givenBy: d.history.given_by,
-            disputed: d.history.disputed
-          },
-          disputeReason: d.dispute_reason,
-          timestamp: new Date(d.created_at).toLocaleString('pt-PT'),
-          status: d.status as 'pending' | 'approved' | 'rejected'
-        }));
+      if (disputesData && historyData) {
+        const formattedDisputes: Dispute[] = disputesData
+          .map(d => {
+            const historyEntry = historyData.find(h => h.id === d.entry_id);
+            if (!historyEntry) return null;
+            return {
+              id: d.id,
+              entry: {
+                id: historyEntry.id,
+                person: historyEntry.person,
+                amount: historyEntry.amount,
+                reason: historyEntry.reason,
+                timestamp: new Date(historyEntry.created_at).toLocaleString('pt-PT'),
+                givenBy: historyEntry.given_by,
+                disputed: historyEntry.disputed
+              },
+              disputeReason: d.dispute_reason,
+              timestamp: new Date(d.created_at).toLocaleString('pt-PT'),
+              status: d.status as 'pending' | 'approved' | 'rejected'
+            };
+          })
+          .filter((d): d is Dispute => d !== null);
         setDisputes(formattedDisputes);
       }
     } catch (error) {
@@ -438,6 +431,8 @@ export default function DatePointsTracker() {
 
   if (!isSetup) {
     const hasExistingData = myImage || theirImage;
+    const isFilipeUser = currentUser === 'Filipe';
+    const needsPhoto = isFilipeUser ? !myImage : !theirImage;
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex items-center justify-center p-4">
@@ -448,164 +443,73 @@ export default function DatePointsTracker() {
             </div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Tabela de Pontos</h1>
             <p className="text-gray-600">
-              {hasExistingData ? 'Quem és tu?' : 'Configura os perfis!'}
+              Olá, {currentUser}! {needsPhoto ? 'Adiciona a tua foto para começar.' : 'Pronto para começar!'}
             </p>
           </div>
 
-          {hasExistingData && (
-            <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl">
-              <p className="text-sm text-green-800 text-center">
-                <span className="font-semibold">✓ Perfis já configurados!</span><br />
-                Escolhe quem és para começar.
-              </p>
-            </div>
-          )}
-
-          {!hasExistingData && !currentUser && (
-            <div className="mb-6">
-              <p className="text-sm text-gray-600 text-center mb-3">Primeiro, quem és tu?</p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setCurrentUser('Filipe')}
-                  className="p-4 bg-pink-100 border-2 border-pink-300 rounded-xl hover:bg-pink-200 transition-all"
-                >
-                  <div className="text-center">
-                    <div className="text-3xl mb-2">👨</div>
-                    <div className="font-bold text-pink-700">Filipe</div>
-                    <div className="text-xs text-gray-500 italic">Cromo dos mapas</div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setCurrentUser('Carlota')}
-                  className="p-4 bg-purple-100 border-2 border-purple-300 rounded-xl hover:bg-purple-200 transition-all"
-                >
-                  <div className="text-center">
-                    <div className="text-3xl mb-2">👩</div>
-                    <div className="font-bold text-purple-700">Carlota</div>
-                    <div className="text-xs text-gray-500 italic">Palhaça</div>
-                  </div>
-                </button>
+          <div className="space-y-4">
+            {needsPhoto && (
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800 text-center">
+                  📸 Por favor adiciona uma foto de perfil para começar
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {(currentUser || hasExistingData) && (
-            <div className="space-y-4">
-              {currentUser && !hasExistingData && (
-                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-800 text-center">
-                    📸 Por favor adiciona uma foto de perfil para começar
-                  </p>
-                </div>
-              )}
-
-              {(currentUser === 'Filipe' || hasExistingData) && (
-                <div className="p-4 bg-pink-50 rounded-xl border-2 border-pink-200">
-                  <div className="flex items-center gap-4">
-                    {myImage ? (
-                      <img src={myImage} alt="Filipe" className="w-16 h-16 rounded-full object-cover border-2 border-pink-400" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">
-                        👨
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Filipe</label>
-                      <div className="text-xs text-gray-500 italic mb-1">Cromo dos mapas</div>
-                      <div className="text-sm font-semibold text-pink-700">
-                        {currentUser === 'Filipe' ? '(Tu)' : hasExistingData ? '(Outro jogador)' : ''}
-                      </div>
-                    </div>
+            <div className={`p-4 rounded-xl border-2 ${isFilipeUser ? 'bg-pink-50 border-pink-200' : 'bg-purple-50 border-purple-200'}`}>
+              <div className="flex items-center gap-4">
+                {(isFilipeUser ? myImage : theirImage) ? (
+                  <img
+                    src={isFilipeUser ? myImage : theirImage}
+                    alt={currentUser || ''}
+                    className={`w-16 h-16 rounded-full object-cover border-2 ${isFilipeUser ? 'border-pink-400' : 'border-purple-400'}`}
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">
+                    {isFilipeUser ? '👨' : '👩'}
                   </div>
-                  {currentUser === 'Filipe' && !myImage && (
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">A tua foto</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageUpload('me', e)}
-                        className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-pink-100 file:text-pink-700 hover:file:bg-pink-200"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {(currentUser === 'Carlota' || hasExistingData) && (
-                <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
-                  <div className="flex items-center gap-4">
-                    {theirImage ? (
-                      <img src={theirImage} alt="Carlota" className="w-16 h-16 rounded-full object-cover border-2 border-purple-400" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">
-                        👩
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Carlota</label>
-                      <div className="text-xs text-gray-500 italic mb-1">Palhaça</div>
-                      <div className="text-sm font-semibold text-purple-700">
-                        {currentUser === 'Carlota' ? '(Tu)' : hasExistingData ? '(Outro jogador)' : ''}
-                      </div>
-                    </div>
+                )}
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{currentUser}</label>
+                  <div className="text-xs text-gray-500 italic mb-1">{isFilipeUser ? 'Cromo dos mapas' : 'Palhaça'}</div>
+                  <div className={`text-sm font-semibold ${isFilipeUser ? 'text-pink-700' : 'text-purple-700'}`}>
+                    (Tu)
                   </div>
-                  {currentUser === 'Carlota' && !theirImage && (
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">A tua foto</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageUpload('them', e)}
-                        className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
-                      />
-                    </div>
-                  )}
+                </div>
+              </div>
+              {needsPhoto && (
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">A tua foto</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(isFilipeUser ? 'me' : 'them', e)}
+                    className={`text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold ${
+                      isFilipeUser
+                        ? 'file:bg-pink-100 file:text-pink-700 hover:file:bg-pink-200'
+                        : 'file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200'
+                    }`}
+                  />
                 </div>
               )}
-
-              {hasExistingData && !currentUser && (
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setCurrentUser('Filipe')}
-                    className="p-3 bg-pink-100 border-2 border-pink-300 rounded-xl hover:bg-pink-200 transition-all font-semibold text-pink-700"
-                  >
-                    Sou o Filipe
-                  </button>
-                  <button
-                    onClick={() => setCurrentUser('Carlota')}
-                    className="p-3 bg-purple-100 border-2 border-purple-300 rounded-xl hover:bg-purple-200 transition-all font-semibold text-purple-700"
-                  >
-                    Sou a Carlota
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={handleSetup}
-                disabled={currentUser === 'Filipe' ? !myImage : !theirImage}
-                className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white py-3 rounded-xl font-semibold hover:from-pink-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {hasExistingData ? 'Começar! 🎉' : 'Começar a Contar Pontos! 🎉'}
-              </button>
-
-              {currentUser && !hasExistingData && (
-                <button
-                  onClick={() => setCurrentUser(null)}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
-                >
-                  ← Mudar utilizador
-                </button>
-              )}
             </div>
-          )}
 
-          {!hasExistingData && !currentUser && (
-            <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm text-blue-800">
-                <span className="font-semibold">💡 Dica:</span> Preenche os dois perfis para começar!
-              </p>
-            </div>
-          )}
+            <button
+              onClick={handleSetup}
+              disabled={needsPhoto}
+              className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white py-3 rounded-xl font-semibold hover:from-pink-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {hasExistingData ? 'Começar! 🎉' : 'Começar a Contar Pontos! 🎉'}
+            </button>
+
+            <button
+              onClick={signOut}
+              className="w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700 py-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair da conta
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -621,11 +525,17 @@ export default function DatePointsTracker() {
             onClick={() => setShowSettings(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-lg hover:shadow-xl transition-all"
           >
-            <img
-              src={isFilipe ? myImage : theirImage}
-              alt={currentUser || ''}
-              className="w-8 h-8 rounded-full object-cover border-2 border-gray-300"
-            />
+            {(isFilipe ? myImage : theirImage) ? (
+              <img
+                src={isFilipe ? myImage : theirImage}
+                alt={currentUser || ''}
+                className="w-8 h-8 rounded-full object-cover border-2 border-gray-300"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-sm border-2 border-gray-300">
+                {isFilipe ? '👨' : '👩'}
+              </div>
+            )}
             <span className="font-semibold text-gray-700">{currentUser || 'Utilizador'}</span>
           </button>
           <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
@@ -766,9 +676,6 @@ export default function DatePointsTracker() {
           />
         )}
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          Feito com ❤️ para o Filipe e a Carlota
-        </div>
 
         {showSettings && (
           <SettingsModal
@@ -780,6 +687,7 @@ export default function DatePointsTracker() {
             theirPoints={theirPoints}
             currentUser={currentUser}
             onClose={() => setShowSettings(false)}
+            onSignOut={signOut}
           />
         )}
       </div>
@@ -834,7 +742,13 @@ function ScoreCard({ name, image, points, stats, color, animating, showHistory, 
     <div className={`bg-white rounded-3xl shadow-xl p-6 transition-all duration-300 ${animating ? `scale-105 ring-4 ${c.ring}` : ''}`}>
       <div className="flex items-center gap-4 mb-4">
         <div className="relative">
-          <img src={image} alt={name} className={`w-20 h-20 rounded-full object-cover border-4 ${c.border}`} />
+          {image ? (
+            <img src={image} alt={name} className={`w-20 h-20 rounded-full object-cover border-4 ${c.border}`} />
+          ) : (
+            <div className={`w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-3xl border-4 ${c.border}`}>
+              {name === 'Filipe' ? '👨' : '👩'}
+            </div>
+          )}
           {canChangeImage && (
             <button
               onClick={() => {
@@ -844,10 +758,10 @@ function ScoreCard({ name, image, points, stats, color, animating, showHistory, 
                 input.onchange = (e) => onImageUpdate(e as unknown as React.ChangeEvent<HTMLInputElement>);
                 input.click();
               }}
-              className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-70 rounded-full transition-all flex items-center justify-center group cursor-pointer"
+              className="absolute inset-0 bg-transparent hover:bg-black/70 rounded-full transition-all flex items-center justify-center group cursor-pointer"
               title="Clica para mudar a foto"
             >
-              <span className="text-black text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg">
+              <span className="text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg">
                 Mudar
               </span>
             </button>
@@ -1261,9 +1175,10 @@ interface SettingsModalProps {
   theirPoints: number;
   currentUser: string | null;
   onClose: () => void;
+  onSignOut: () => void;
 }
 
-function SettingsModal({ myName, theirName, myImage, theirImage, myPoints, theirPoints, currentUser, onClose }: SettingsModalProps) {
+function SettingsModal({ myName, theirName, myImage, theirImage, myPoints, theirPoints, currentUser, onClose, onSignOut }: SettingsModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
@@ -1280,7 +1195,13 @@ function SettingsModal({ myName, theirName, myImage, theirImage, myPoints, their
         <div className="space-y-4">
           <div className="p-4 bg-pink-50 rounded-xl border-2 border-pink-200">
             <div className="flex items-center gap-4">
-              <img src={myImage} alt="Filipe" className="w-16 h-16 rounded-full object-cover border-2 border-pink-400" />
+              {myImage ? (
+                <img src={myImage} alt="Filipe" className="w-16 h-16 rounded-full object-cover border-2 border-pink-400" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl border-2 border-pink-400">
+                  👨
+                </div>
+              )}
               <div className="flex-1">
                 <h3 className="font-bold text-pink-700 text-lg">{myName}</h3>
                 <div className="text-sm text-gray-600">
@@ -1292,7 +1213,13 @@ function SettingsModal({ myName, theirName, myImage, theirImage, myPoints, their
 
           <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
             <div className="flex items-center gap-4">
-              <img src={theirImage} alt="Carlota" className="w-16 h-16 rounded-full object-cover border-2 border-purple-400" />
+              {theirImage ? (
+                <img src={theirImage} alt="Carlota" className="w-16 h-16 rounded-full object-cover border-2 border-purple-400" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl border-2 border-purple-400">
+                  👩
+                </div>
+              )}
               <div className="flex-1">
                 <h3 className="font-bold text-purple-700 text-lg">{theirName}</h3>
                 <div className="text-sm text-gray-600">
@@ -1303,9 +1230,16 @@ function SettingsModal({ myName, theirName, myImage, theirImage, myPoints, their
           </div>
 
           <div className="pt-4 border-t border-gray-200">
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs text-gray-500 text-center mb-4">
               Utilizador atual: <span className="font-semibold">{currentUser || 'Não definido'}</span>
             </p>
+            <button
+              onClick={onSignOut}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair da conta
+            </button>
           </div>
         </div>
       </div>

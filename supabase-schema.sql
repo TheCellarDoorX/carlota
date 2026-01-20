@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS game_state (
   their_image TEXT,
   my_points INTEGER DEFAULT 0,
   their_points INTEGER DEFAULT 0,
-  current_user TEXT,
+  selected_user TEXT,
   is_setup BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
